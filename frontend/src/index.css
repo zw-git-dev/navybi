@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+
+  --color-canvas: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-border: #e2e5eb;
+  --color-border-strong: #cbd2df;
+
+  --color-ink: #14171f;
+  --color-ink-muted: #5b6270;
+  --color-ink-faint: #8b93a3;
+
+  --color-accent: #2a5cdb;
+  --color-accent-hover: #2049b3;
+  --color-accent-soft: #eaf0fe;
+
+  --color-good: #1a8f5e;
+  --color-good-soft: #e6f6ef;
+  --color-warn: #b6660a;
+  --color-warn-soft: #fdf1e0;
+  --color-bad: #c23b3b;
+  --color-bad-soft: #fbeaea;
+
+  --shadow-card: 0 1px 2px rgba(20, 23, 31, 0.04), 0 1px 6px rgba(20, 23, 31, 0.04);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.leaflet-container {
+  font-family: var(--font-sans);
+}

@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+warehouse/navybi.duckdb
+data/raw/
+data/clean/
+data/powerbi_export/
+data/audit_log.csv
+auth/users.json
+frontend/node_modules/
+frontend/dist/
