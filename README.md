@@ -32,10 +32,19 @@ Without a `.env` file, the app runs exactly as it did through round 5 — keywor
 
 ## Running it
 
-The easy way — one script does setup (idempotent, skips what's already done) and starts both the API and the frontend:
+The easy way — one script does setup (idempotent, skips what's already done) and starts the app:
 ```bash
-./run.sh          # normal run
+./run.sh          # development: API on :8000, Vite dev server on :5173 (open this one)
+./run.sh --prod   # production-style: build the SPA and serve everything from :8000
 ./run.sh --reset  # wipe and regenerate synthetic data, warehouse, and users first
+./stop.sh         # stop whatever's running on :8000 / :5173
+```
+
+In `--prod` mode the FastAPI process serves the built frontend itself, so there's one process, one port, and no CORS. Set `JWT_SECRET` in `.env` if you want sessions to survive a restart (without it, a random per-process secret is generated — no default secret ships in this repo).
+
+Docker is also wired up, though **unverified** — Docker isn't installed on the machine this was built on:
+```bash
+docker compose up --build   # then open http://localhost:8000
 ```
 
 Or by hand:
@@ -52,6 +61,20 @@ cd frontend && npm install && npm run dev
 ```
 
 Then open `http://localhost:5173` and log in with one of the demo accounts `auth/seed_users.py` prints to the console. The Vite dev server proxies `/api` to the FastAPI backend on port 8000, so the browser only ever talks to one origin.
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+python3 -m pytest tests/test_api.py           # 44 API tests: auth, RBAC, response contracts
+python3 -m pytest tests/test_static_serving.py # production static-serving (skips if frontend/dist isn't built)
+python3 tests/test_questions.py               # NL interpretation suite -- hits the real LLM, see QUESTION_TEST_LOG.md
+
+cd frontend && npm test                        # 33 component/logic tests
+cd frontend && npm run typecheck && npm run lint && npm run build
+```
+
+The API tests run against the real warehouse and real seeded accounts rather than mocks — the point of that layer is the wiring between auth, roles, and the semantic layer, and mocked internals would pass while that wiring is broken. They force the deterministic keyword interpreter so they don't depend on the LLM being reachable or in-quota. [CI](.github/workflows/ci.yml) runs all of this on push (pytest on a Python 3.9/3.11 matrix, plus the frontend checks).
 
 ## Structure
 
@@ -71,7 +94,11 @@ api/deps.py                       JWT-cookie session handling (login/current-use
 api/routers/                      auth, dashboard (Overview/Trends/Map/Drill-down data), ask, governance, audit-log endpoints
 frontend/                         React + TypeScript + Tailwind SPA -- sidebar nav, dashboards (Recharts), map (react-leaflet), conversational query UI
 rmf/                               RMF documentation package (categorization, SSP, SAP, SAR, POA&M)
+tests/test_api.py                 API tests: auth, role-based access control, response contracts
+tests/test_static_serving.py      Production-mode tests: SPA serving and client-side route fallback
 tests/test_questions.py           Curated realistic-question test harness (see QUESTION_TEST_LOG.md)
+Dockerfile, docker-compose.yml    Container packaging (written, not yet verified -- no Docker on the build machine)
+run.sh / stop.sh                  Start (dev or --prod) and stop the app
 ```
 
 ## What was actually demonstrated

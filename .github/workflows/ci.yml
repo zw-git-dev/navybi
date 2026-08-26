@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: Backend (pytest, py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.9 is what this project is actually developed on (macOS system
+        # Python); 3.11 catches anything that breaks on a modern runtime.
+        # Testing only one would let a break in the other direction through.
+        python-version: ['3.9', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # The API tests run against a real warehouse rather than mocks (see
+      # tests/conftest.py for why), so CI has to build the same artifacts
+      # ./run.sh builds locally. Data is synthetic and generated fresh, so
+      # there's nothing sensitive here and nothing to cache.
+      - name: Generate synthetic data and build the warehouse
+        run: |
+          python data/generate_synthetic_data.py
+          python pipeline/clean.py
+          python warehouse/semantic_layer.py
+          python auth/seed_users.py
+
+      # No OPENROUTER_API_KEY is set here on purpose. The API tests force the
+      # deterministic keyword path anyway, and pointing CI at a rate-limited
+      # free model would make builds fail on quota rather than on regressions.
+      # Interpretation quality is tracked separately (QUESTION_TEST_LOG.md).
+      - name: Run API tests
+        run: python -m pytest tests/test_api.py -v
+
+  frontend:
+    name: Frontend (typecheck, lint, test, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build

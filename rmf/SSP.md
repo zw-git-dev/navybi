@@ -13,8 +13,8 @@ This SSP does not attempt a control-by-control listing of the full ~250-control 
 NavyBI Prototype is a self-contained conversational analytics application for post-mission reporting data. See [README.md](../README.md) for the full architecture description. In brief:
 
 - **Data pipeline:** synthetic data generation (`data/generate_synthetic_data.py`) → automated cleansing (`pipeline/clean.py`) → a governed semantic layer in DuckDB (`warehouse/`).
-- **Application:** a Streamlit web app (`app/main.py`) presenting dashboards, a conversational query interface, and (for admins) governance/audit views.
-- **Authentication:** local username/password accounts (`auth/`), two roles (admin, analyst).
+- **Application:** a FastAPI backend (`api/`) serving a React/TypeScript single-page app (`frontend/`), presenting dashboards, a conversational query interface, and (for admins) governance/audit views.
+- **Authentication:** local username/password accounts (`auth/`), two roles (admin, analyst); sessions carried as a signed JWT in an httpOnly cookie (`api/deps.py`).
 - **External interconnection:** the conversational query layer calls an LLM via OpenRouter (`app/llm_interpret.py`) over HTTPS when configured, with a local keyword-matching fallback when it isn't.
 - **Deployment (as-built):** runs on a single host (a developer laptop in this build), accessed via `localhost`, no network exposure beyond the outbound OpenRouter API call.
 
@@ -24,9 +24,11 @@ NavyBI Prototype is a self-contained conversational analytics application for po
                      ┌───────────────────────────────────────────┐
                      │           NavyBI Prototype (single host)    │
                      │                                              │
-  Browser  ──HTTP──▶ │  Streamlit app (app/) ──▶ DuckDB warehouse   │
-  (localhost)        │        │                    (warehouse/)     │
-                     │        │                                     │
+  Browser  ──HTTP──▶ │  React SPA (frontend/)                       │
+  (localhost)        │        │  fetch /api/*                        │
+                     │        ▼                                     │
+                     │  FastAPI app (api/) ──▶ DuckDB warehouse     │
+                     │        │                    (warehouse/)     │
                      │        ▼                                     │
                      │  auth/ (local accounts, audit log)            │
                      └────────┼───────────────────────────────────┘
@@ -47,7 +49,7 @@ The OpenRouter connection is the system's only external network interconnection 
 | Control | Status | Detail |
 |---|---|---|
 | AC-2 Account Management | Partial | Two demo accounts seeded by `auth/seed_users.py`. No self-service provisioning, no periodic account review, no deprovisioning workflow. Real deployment needs accounts tied to an authoritative personnel/identity source. |
-| AC-3 Access Enforcement | Partial | Role-based page visibility enforced in `app/main.py` via `auth.has_governance_access()` — an analyst cannot see the governance panel or audit log. Gap: no row-level/data-level access control (e.g., unit-level compartmentalization) — any authenticated user can query data for every unit. |
+| AC-3 Access Enforcement | Partial | Role-based access enforced server-side in `api/deps.py::require_admin` (built on `auth.has_governance_access()`), which returns HTTP 403 to non-admin callers on the governance and audit-log endpoints; the SPA additionally hides admin navigation and redirects admin routes (`frontend/src/ProtectedRoute.tsx`). Enforcement is deliberately server-side as well as client-side, since a client-side-only guard is a UI convenience and not access control — verified by calling the endpoints directly as an analyst and receiving 403. Gap: no row-level/data-level access control (e.g., unit-level compartmentalization) — any authenticated user can query data for every unit. |
 | AC-7 Unsuccessful Logon Attempts | Not implemented | `auth/auth.py` has no failed-attempt counter or account lockout. POA&M item. |
 | AC-8 System Use Notification | Not implemented | No warning banner on login. POA&M item — trivial to add, not yet done. |
 | AC-17 Remote Access | N/A (as-built) | System runs on `localhost` only; no remote access path exists to control. Becomes applicable the moment this is deployed off a single host. |
@@ -65,7 +67,7 @@ The OpenRouter connection is the system's only external network interconnection 
 
 | Control | Status | Detail |
 |---|---|---|
-| IA-2 Identification and Authentication (Organizational Users) | Partial | Username/password login is real and functional (`auth/auth.py`, `app/main.py::require_login`). **This is the single largest gap for any real DoD deployment**: no multi-factor authentication, and critically, no DoD PKI/CAC integration, which is a hard requirement for real DoD systems, not an optional hardening step. |
+| IA-2 Identification and Authentication (Organizational Users) | Partial | Username/password login is real and functional (`auth/auth.py::verify_credentials`, `api/routers/auth.py::login`), with sessions carried as a signed JWT in an httpOnly cookie (`api/deps.py`). **This is the single largest gap for any real DoD deployment**: no multi-factor authentication, and critically, no DoD PKI/CAC integration, which is a hard requirement for real DoD systems, not an optional hardening step. |
 | IA-5 Authenticator Management | Partial | Passwords are bcrypt-hashed at rest (`auth/seed_users.py`), never stored or logged in plaintext by the application. Gap: no complexity policy enforcement, no expiration/rotation, no self-service reset. The two demo passwords are documented in plaintext in `auth/seed_users.py` itself — acceptable only because these are non-production demo accounts for a synthetic-data prototype, and is called out explicitly in that file's docstring. |
 
 ### CM — Configuration Management
@@ -73,14 +75,14 @@ The OpenRouter connection is the system's only external network interconnection 
 | Control | Status | Detail |
 |---|---|---|
 | CM-2 Baseline Configuration | Implemented | The entire system is version-controlled in git; `requirements.txt` pins exact dependency versions. |
-| CM-6 Configuration Settings | Not implemented | No formal hardening baseline applied to the host OS, Python runtime, or the Streamlit server's own configuration (e.g., default bind address, no TLS on the Streamlit server itself). |
+| CM-6 Configuration Settings | Not implemented | No formal hardening baseline applied to the host OS, Python runtime, or the application server's own configuration (e.g., default bind address, no TLS on the Uvicorn/FastAPI server itself). Note: the JWT signing secret is not a committed default — absent an explicit `JWT_SECRET`, `api/deps.py` generates a random per-process secret at startup, so no known signing key ships in the repository. |
 
 ### SC — System and Communications Protection
 
 | Control | Status | Detail |
 |---|---|---|
 | SC-7 Boundary Protection | N/A (as-built) | Single host, no defined network boundary to protect. Real deployment requires a defined enclave boundary and network controls. |
-| SC-8 Transmission Confidentiality and Integrity | Partial | The OpenRouter leg is HTTPS (TLS, via the `requests` library) — that traffic is encrypted in transit. The local Streamlit UI itself is served over plain HTTP with no TLS termination configured. Real deployment requires TLS in front of the web app. |
+| SC-8 Transmission Confidentiality and Integrity | Partial | The OpenRouter leg is HTTPS (TLS, via the `requests` library) — that traffic is encrypted in transit. The local web app itself (Uvicorn/FastAPI, and the Vite dev server in development) is served over plain HTTP with no TLS termination configured. Real deployment requires TLS in front of the web app. Session cookies are set `httponly` with `samesite=lax` (`api/routers/auth.py`), but deliberately not `secure`, since that flag would break the plain-HTTP localhost demo — enabling it is a required step for any TLS deployment. |
 | SC-13 Cryptographic Protection | Partial | bcrypt is used for password hashing (appropriate, one-way). No encryption at rest for the DuckDB warehouse file, CSV data, or the audit log. |
 | **SC-related finding: unmanaged external interconnection** | **Not implemented / open risk** | Every LLM-interpreted query sends the question text and the full known entity vocabulary (unit names, mission types, equipment types, certifications) to OpenRouter, a third-party commercial API, with no data-handling agreement, no confirmed FedRAMP authorization for the serving infrastructure, and no on-prem/air-gapped alternative configured. Harmless today because the data is synthetic; **this is the control gap that would block real data from ever reaching this connection** without a resolved hosting decision. Documented in depth in [GOVERNANCE_NOTES.md](../GOVERNANCE_NOTES.md)'s Governable section. |
 

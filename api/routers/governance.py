@@ -15,6 +15,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends
 
 from api.deps import require_admin
+from api.utils import df_to_records
 from warehouse import semantic_layer as sl
 
 router = APIRouter(prefix="/api/governance", tags=["governance"], dependencies=[Depends(require_admin)])
@@ -26,7 +27,11 @@ CLEAN_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "clean")
 @router.get("/cleansing-log")
 @lru_cache(maxsize=1)
 def cleansing_log():
-    return sl.cleansing_log_df().to_dict(orient="records")
+    # df_to_records rather than to_dict() for the same reason as the audit
+    # log: any null field would otherwise serialize as a bare NaN and 500
+    # the endpoint. No cleansing entry has a null today, but nothing stops
+    # a future one from having it.
+    return df_to_records(sl.cleansing_log_df())
 
 
 @router.get("/row-counts")

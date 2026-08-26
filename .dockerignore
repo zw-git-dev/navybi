@@ -1,0 +1,23 @@
+# Build artifacts and local state -- the image builds the frontend itself and
+# generates its own synthetic data, so copying these in would only bloat the
+# build context and risk baking in stale local state.
+venv/
+__pycache__/
+*.pyc
+frontend/node_modules/
+frontend/dist/
+data/raw/
+data/clean/
+data/powerbi_export/
+data/audit_log.csv
+warehouse/*.duckdb
+auth/users.json
+
+# Never copy local secrets into an image layer.
+.env
+
+.git/
+.github/
+.DS_Store
+*.md
+!README.md

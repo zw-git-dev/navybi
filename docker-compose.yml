@@ -1,0 +1,31 @@
+services:
+  navybi:
+    build: .
+    image: navybi:latest
+    ports:
+      - "8000:8000"
+    environment:
+      # Optional. Without a key the conversational layer falls back to the
+      # keyword matcher -- the app works either way (see README).
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-google/gemma-4-31b-it:free}"
+      # Set this to keep sessions alive across restarts; if unset, the app
+      # generates a random per-process secret rather than using a known
+      # default, so existing sessions are invalidated on restart.
+      JWT_SECRET: "${JWT_SECRET:-}"
+      NAVYBI_AUDIT_LOG_PATH: /app/var/audit_log.csv
+    volumes:
+      # Only the audit log is persisted, and it's mounted at a dedicated path
+      # rather than over data/, auth/, or warehouse/ -- those directories hold
+      # application code as well as generated files, and a named volume
+      # mounted over one of them would seed itself from the image once and
+      # then shadow that code on every later rebuild. The synthetic dataset,
+      # the DuckDB warehouse, and the demo accounts are all regenerated
+      # deterministically at startup, so there's nothing lost by not
+      # persisting them; the audit trail is the one thing that can't be
+      # reconstructed.
+      - navybi-var:/app/var
+    restart: unless-stopped
+
+volumes:
+  navybi-var:

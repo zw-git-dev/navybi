@@ -1,0 +1,5 @@
+# Test-only dependencies. Kept separate from requirements.txt so a plain
+# install/run of the app doesn't pull in the test toolchain.
+-r requirements.txt
+httpx==0.28.1
+pytest==8.4.2

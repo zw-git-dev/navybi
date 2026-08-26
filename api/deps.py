@@ -4,14 +4,20 @@ knows about users.json/bcrypt/the audit log); this module is where "how a
 session is carried between requests" actually lives, using a signed JWT in
 an httpOnly cookie instead of Streamlit's server-side session state.
 
-JWT_SECRET should be set via the environment for any real deployment -- the
-fallback below is a clearly-labeled dev default, consistent with this
-project's practice of never silently pretending a demo shortcut is
-production-grade (see auth/auth.py's module docstring and rmf/SSP.md's IA
-section).
+On the signing secret: set JWT_SECRET in the environment (or .env) for any
+deployment where sessions need to survive a restart. When it's absent, a
+random secret is generated per process rather than falling back to a
+hardcoded one -- a known signing key committed to a repository is a real
+vulnerability (anyone with the source can mint a valid admin session),
+whereas a random per-process secret costs only that restarting the server
+invalidates existing sessions, which for a local demo is a non-issue. This
+also keeps rmf/SSP.md's CM-6 note honest: there is no default credential
+shipping in this codebase.
 """
 import os
+import secrets
 import sys
+import warnings
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -21,7 +27,15 @@ from fastapi import Depends, HTTPException, Request, status
 
 from auth import auth
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "navybi-dev-secret-DO-NOT-USE-IN-A-REAL-DEPLOYMENT")
+JWT_SECRET = os.environ.get("JWT_SECRET")
+if not JWT_SECRET:
+    JWT_SECRET = secrets.token_urlsafe(32)
+    warnings.warn(
+        "JWT_SECRET is not set; generated a random per-process signing secret. "
+        "Sessions will be invalidated when this process restarts. Set JWT_SECRET "
+        "in your environment or .env file for stable sessions.",
+        stacklevel=2,
+    )
 JWT_ALGORITHM = "HS256"
 COOKIE_NAME = "navybi_session"
 TOKEN_LIFETIME = timedelta(hours=12)

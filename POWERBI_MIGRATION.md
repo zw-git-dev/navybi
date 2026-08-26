@@ -1,6 +1,6 @@
 # Migrating This Prototype's Dashboards to Power BI
 
-This is the step-by-step path from "custom Streamlit dashboard" to "Power BI report," using the same cleaned data and the same measure definitions, decided and scoped in [PLAN.md](PLAN.md).
+This is the step-by-step path from "this prototype's own dashboards" to "Power BI report," using the same cleaned data and the same measure definitions, decided and scoped in [PLAN.md](PLAN.md).
 
 ## Environment constraint — read this first
 
@@ -14,7 +14,7 @@ Nothing in this repo can validate the Power BI side directly from this environme
 
 Per the integration approach decided for this prototype: **Power BI becomes the dashboard/reporting layer; the conversational "Ask a question" layer stays custom** and keeps querying this app's own semantic layer (DuckDB now) directly — it does not go through Power BI. This preserves the explainability/safeguard behavior documented in [QUESTION_TEST_LOG.md](QUESTION_TEST_LOG.md), which would be lost if the NL feature were handed off to Power BI's own Copilot/Q&A.
 
-So: Overview / Trends / Map dashboard pages (`app/dashboard.py`) → candidates to be rebuilt as native Power BI reports. Ask a question, Drill-down, Governance panel → stay in the Streamlit app regardless of Power BI adoption.
+So: Overview / Trends / Map dashboard pages (`api/routers/dashboard.py` + `frontend/src/pages/`) → candidates to be rebuilt as native Power BI reports. Ask a question, Drill-down, Governance panel → stay in this app regardless of Power BI adoption.
 
 ## Step 1 — Export the data
 
@@ -56,7 +56,7 @@ Optional: let Power BI auto-generate a Date table (Modeling → New Table → da
 
 ## Step 4 — Add the DAX measures
 
-See [POWERBI_MEASURES.md](POWERBI_MEASURES.md) — generated directly from this codebase's measure registry (`warehouse/semantic_layer.py::MEASURE_DOCS`), not hand-written, so it can't silently drift from what the Streamlit app actually computes. Paste each DAX formula into a new measure on the table named in its definition.
+See [POWERBI_MEASURES.md](POWERBI_MEASURES.md) — generated directly from this codebase's measure registry (`warehouse/semantic_layer.py::MEASURE_DOCS`), not hand-written, so it can't silently drift from what this app actually computes. Paste each DAX formula into a new measure on the table named in its definition.
 
 If you change a measure's logic, update `MEASURE_DOCS` in `warehouse/semantic_layer.py` (both the SQL-facing description and the `dax` field) and regenerate the doc:
 
@@ -66,9 +66,9 @@ python3 warehouse/generate_powerbi_measures_doc.py
 
 ## Step 5 — Rebuild the visuals
 
-Rough equivalence to this prototype's Streamlit pages:
+Rough equivalence to this prototype's own pages:
 
-| Streamlit page | Power BI equivalent |
+| This app's page | Power BI equivalent |
 |---|---|
 | Overview (KPI tiles + bar charts) | Card visuals for the KPIs, clustered bar charts for completion rate / readiness / training currency / maintenance downtime & resolution rate |
 | Trends (line chart by month) | Line chart visual, Date table on the axis, `unit_name` as legend |

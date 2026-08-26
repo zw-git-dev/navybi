@@ -25,7 +25,17 @@ from datetime import datetime
 import bcrypt
 
 USERS_PATH = os.path.join(os.path.dirname(__file__), "users.json")
-AUDIT_LOG_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "audit_log.csv")
+
+# Overridable so a deployment can point the audit trail at a mounted volume
+# (see docker-compose.yml) instead of a path that sits inside the application
+# directory. The audit log is the one piece of state here that genuinely must
+# survive a restart -- the synthetic dataset, the warehouse, and the demo
+# accounts are all regenerated deterministically, but "who asked what" cannot
+# be reconstructed once it's gone.
+AUDIT_LOG_PATH = os.environ.get(
+    "NAVYBI_AUDIT_LOG_PATH",
+    os.path.join(os.path.dirname(__file__), "..", "data", "audit_log.csv"),
+)
 
 ROLES_WITH_GOVERNANCE_ACCESS = {"admin"}
 

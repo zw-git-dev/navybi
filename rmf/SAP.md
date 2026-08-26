@@ -25,7 +25,7 @@ Per NIST SP 800-53A, each control below would be assessed using one or more of:
 | IA-2 (Identification and Authentication) | Examine, Interview | Confirm authentication mechanism is username/password only; confirm absence of MFA/PKI integration. Expected current result: **partial** — functional login exists, but not to DoD identity standards. |
 | IA-5 (Authenticator Management) | Examine | Confirm password storage uses bcrypt (not plaintext or reversible encryption) by reviewing `auth/seed_users.py` and `auth/auth.py`. |
 | CM-2 (Baseline Configuration) | Examine | Confirm git history exists and `requirements.txt` pins versions. |
-| SC-8 (Transmission Confidentiality) | Test | Capture network traffic (e.g., via a local proxy) during an LLM-interpreted query; confirm the OpenRouter leg is TLS-encrypted and the local Streamlit UI is not. |
+| SC-8 (Transmission Confidentiality) | Test | Capture network traffic (e.g., via a local proxy) during an LLM-interpreted query; confirm the OpenRouter leg is TLS-encrypted and the local web app (Uvicorn/FastAPI) is not. |
 | SC-13 (Cryptographic Protection) | Examine | Confirm bcrypt usage for passwords; confirm absence of encryption-at-rest for the DuckDB file and CSV data. |
 | CA-3 (Information Exchange) | Examine | Confirm absence of a signed Interconnection Security Agreement for the OpenRouter connection. Expected current result: **fails** — none exists. |
 | RA-5 (Vulnerability Monitoring) | Test | Run a dependency vulnerability scanner (e.g., `pip-audit`) against `requirements.txt` and record findings — not yet run as of this SAP's writing. |
