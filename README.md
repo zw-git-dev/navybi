@@ -42,9 +42,18 @@ The easy way — one script does setup (idempotent, skips what's already done) a
 
 In `--prod` mode the FastAPI process serves the built frontend itself, so there's one process, one port, and no CORS. Set `JWT_SECRET` in `.env` if you want sessions to survive a restart (without it, a random per-process secret is generated — no default secret ships in this repo).
 
-Docker is also wired up, though **unverified** — Docker isn't installed on the machine this was built on:
+Docker also works:
 ```bash
 docker compose up --build   # then open http://localhost:8000
+```
+The container generates its data, builds the warehouse, and seeds the demo accounts on first start, runs as a non-root user, and persists only the query audit log (in a volume at `/app/var`) — everything else is regenerated deterministically. Compose picks up your local `.env` automatically, so the LLM path works in the container too.
+
+If you don't have a Docker daemon on macOS, [Colima](https://github.com/abiosoft/colima) is the lightest way to get one (no admin password needed, unlike Docker Desktop):
+```bash
+brew install colima docker docker-compose
+colima start --cpu 4 --memory 4
+# docker-compose is a plugin; point Docker at it once:
+#   add "cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"] to ~/.docker/config.json
 ```
 
 Or by hand:
@@ -97,7 +106,7 @@ rmf/                               RMF documentation package (categorization, SS
 tests/test_api.py                 API tests: auth, role-based access control, response contracts
 tests/test_static_serving.py      Production-mode tests: SPA serving and client-side route fallback
 tests/test_questions.py           Curated realistic-question test harness (see QUESTION_TEST_LOG.md)
-Dockerfile, docker-compose.yml    Container packaging (written, not yet verified -- no Docker on the build machine)
+Dockerfile, docker-compose.yml    Container packaging (multi-stage build, non-root, healthchecked)
 run.sh / stop.sh                  Start (dev or --prod) and stop the app
 ```
 
