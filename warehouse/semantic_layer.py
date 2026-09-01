@@ -15,6 +15,10 @@ CLEAN_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "clean")
 DB_PATH = os.path.join(os.path.dirname(__file__), "navybi.duckdb")
 MEASURES_SQL_PATH = os.path.join(os.path.dirname(__file__), "measures.sql")
 
+# Everything after this marker in measures.sql depends on the multimodal
+# extraction tables and is applied only when those tables are present.
+MULTIMODAL_SECTION_MARKER = "-- MULTIMODAL LAYER"
+
 # Plain-language documentation for every measure, shown in the governance
 # panel and used by the NL layer to explain *why* a number means what it
 # claims to mean. Keeping this next to the SQL (measures.sql) is the seed of
@@ -170,6 +174,87 @@ MEASURE_DOCS = {
             "should already be a clean boolean on import; verify the column type rather than re-deriving it."
         ),
     },
+    "v_debrief_mentions_by_equipment": {
+        "label": "Debrief-reported discrepancy mentions by equipment type",
+        "description": (
+            "How many post-mission debriefs describe a problem with each equipment "
+            "type, broken out by severity. Sourced from UNSTRUCTURED text -- free-text "
+            "debrief narratives and transcribed spoken debriefs -- via the extraction "
+            "pipeline in ingest/, not from any structured field. Counts what crews "
+            "actually reported in prose, which is a different question from what the "
+            "maintenance system recorded; see the corroboration measure for the "
+            "comparison between the two."
+        ),
+        "table": "v_debrief_mentions_by_equipment",
+        "dax": (
+            "Debrief Mentions = CALCULATE(COUNTROWS(debrief_extractions), "
+            "debrief_extractions[has_discrepancy] = TRUE)"
+        ),
+        "power_query_notes": "Group by debrief_extractions[equipment_type]; the column already shares the conformed equipment vocabulary used by readiness and maintenance, so it can sit on the same axis as those measures.",
+    },
+    "v_debrief_discrepancy_rate_by_unit": {
+        "label": "Debrief-reported discrepancy rate by unit",
+        "description": (
+            "Share of a unit's analyzed debriefs that describe an equipment problem "
+            "at all. Denominator is every debrief successfully ingested for that unit "
+            "(text or audio), so this is a rate over reports analyzed, not over sorties "
+            "flown -- a unit whose debriefs weren't captured will be absent rather than "
+            "appear to have a perfect record."
+        ),
+        "table": "v_debrief_discrepancy_rate_by_unit",
+        "dax": (
+            "Debrief Discrepancy Rate = \n"
+            "DIVIDE(\n"
+            "    CALCULATE(COUNTROWS(debrief_extractions), debrief_extractions[has_discrepancy] = TRUE),\n"
+            "    COUNTROWS(debrief_extractions)\n"
+            ") * 100"
+        ),
+        "power_query_notes": "Group by unit_name via the debrief_extractions -> units relationship on unit_id.",
+    },
+    "v_narrative_vs_maintenance_corroboration": {
+        "label": "Narrative vs. maintenance-record corroboration by equipment type",
+        "description": (
+            "Cross-modal comparison: how often each equipment type is implicated in "
+            "debrief NARRATIVES (unstructured text and audio) versus how many "
+            "maintenance events the structured system of record holds for it. Neither "
+            "source can produce this measure alone. A ratio well above 1 means crews "
+            "are describing problems that comparatively few maintenance write-ups "
+            "capture, which points at a reporting-pipeline gap rather than an "
+            "equipment fact. Reported as counts plus a ratio and deliberately not as "
+            "an alert -- the system's role is to surface the divergence between two "
+            "independent sources; a human decides whether it reflects underreporting, "
+            "different thresholds for what merits a write-up, or nothing at all."
+        ),
+        "table": "v_narrative_vs_maintenance_corroboration",
+        "dax": (
+            "Narrative To Record Ratio = \n"
+            "DIVIDE(\n"
+            "    CALCULATE(COUNTROWS(debrief_extractions), debrief_extractions[has_discrepancy] = TRUE),\n"
+            "    COUNTROWS(maintenance_events)\n"
+            ")"
+        ),
+        "power_query_notes": (
+            "Requires both debrief_extractions and maintenance_events related to a shared "
+            "equipment_type dimension table. Build that dimension explicitly in Power BI "
+            "rather than relating the two fact tables directly -- a conformed dimension is "
+            "what makes the two counts comparable on one axis, and it's the same conformed "
+            "vocabulary the SQL view relies on."
+        ),
+    },
+    "v_extraction_provenance": {
+        "label": "Extraction provenance by modality and extractor",
+        "description": (
+            "Operational transparency rather than mission analytics: how many facts in "
+            "the warehouse came from each source modality (typed text, transcribed "
+            "audio) and which extractor produced them (LLM or deterministic rules), "
+            "plus mean transcription confidence where applicable. This is the "
+            "provenance question an assessor asks first -- where did these numbers come "
+            "from, and what produced them."
+        ),
+        "table": "v_extraction_provenance",
+        "dax": "Extraction Count = COUNTROWS(debrief_extractions)",
+        "power_query_notes": "Group by debrief_extractions[source_modality] and [extracted_by].",
+    },
 }
 
 
@@ -183,9 +268,41 @@ def build_warehouse():
     con.execute("CREATE OR REPLACE TABLE training_records AS SELECT * FROM read_csv_auto(?)", [os.path.join(CLEAN_DIR, "training_records.csv")])
     con.execute("CREATE OR REPLACE TABLE maintenance_events AS SELECT * FROM read_csv_auto(?)", [os.path.join(CLEAN_DIR, "maintenance_events.csv")])
 
+    # Multimodal extractions (ingest/run_ingest.py). Optional on purpose: the
+    # unstructured sources need extra dependencies (OCR, speech-to-text) that
+    # the core BI application doesn't require, so the warehouse builds fine
+    # without them and the multimodal views are simply absent. Creating empty
+    # tables instead would be worse -- a view returning zero rows looks like
+    # "no discrepancies were reported" rather than "this modality wasn't
+    # ingested," and that's exactly the kind of silent wrong answer the rest
+    # of this codebase works to avoid.
+    for table, filename in [
+        ("debrief_extractions", "debrief_extractions.csv"),
+        ("form_extractions", "form_extractions.csv"),
+    ]:
+        path = os.path.join(CLEAN_DIR, filename)
+        if os.path.exists(path):
+            con.execute(
+                f"CREATE OR REPLACE TABLE {table} AS SELECT * FROM read_csv_auto(?)", [path]
+            )
+
     with open(MEASURES_SQL_PATH) as f:
         views_sql = f.read()
-    for statement in views_sql.split(";"):
+
+    # The multimodal views depend on tables that only exist once
+    # ingest/run_ingest.py has run. Split there and skip that section
+    # entirely when its inputs are absent, rather than letting CREATE VIEW
+    # fail mid-build and leave a half-applied warehouse.
+    core_sql, _, multimodal_sql = views_sql.partition(MULTIMODAL_SECTION_MARKER)
+    has_multimodal = con.execute(
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'debrief_extractions'"
+    ).fetchone()[0] > 0
+
+    statements = core_sql
+    if has_multimodal:
+        statements += multimodal_sql
+
+    for statement in statements.split(";"):
         statement = statement.strip()
         if statement:
             con.execute(statement)

@@ -11,3 +11,5 @@ data/audit_log.csv
 auth/users.json
 frontend/node_modules/
 frontend/dist/
+data/extraction_cache.json
+docs/node_modules/

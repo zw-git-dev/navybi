@@ -71,6 +71,20 @@ cd frontend && npm install && npm run dev
 
 Then open `http://localhost:5173` and log in with one of the demo accounts `auth/seed_users.py` prints to the console. The Vite dev server proxies `/api` to the FastAPI backend on port 8000, so the browser only ever talks to one origin.
 
+### Optional: the multimodal layer (text, audio, imagery)
+
+The unstructured sources need extra dependencies, kept out of the base install so the core app, container image, and CI stay light. OCR also needs the tesseract binary, which isn't a Python package.
+
+```bash
+brew install tesseract                        # or: apt-get install tesseract-ocr
+pip install -r requirements-multimodal.txt
+python3 data/generate_multimodal_data.py      # debrief text, spoken audio, photographed forms
+python3 ingest/run_ingest.py                  # extract + score against held-out ground truth
+python3 warehouse/semantic_layer.py           # rebuild so the multimodal views exist
+```
+
+`ingest/run_ingest.py` prints per-modality, per-field accuracy and writes it to `data/clean/extraction_accuracy.json`. Without these steps the app runs exactly as before — the multimodal views are simply absent rather than empty, so a missing modality can't be mistaken for "nothing was reported."
+
 ## Tests
 
 ```bash
@@ -94,6 +108,11 @@ warehouse/measures.sql            Semantic-layer views: relationships + named, d
 warehouse/semantic_layer.py       Builds the DuckDB warehouse; MEASURE_DOCS holds SQL + DAX per measure
 warehouse/export_for_powerbi.py   Exports cleaned tables to Parquet for Power BI import
 warehouse/generate_powerbi_measures_doc.py  Generates POWERBI_MEASURES.md from MEASURE_DOCS (don't hand-edit that file)
+data/generate_multimodal_data.py  Synthetic UNSTRUCTURED sources: debrief narratives, spoken debrief audio, photographed maintenance forms (with held-out ground truth)
+ingest/extract_text.py            Free-text debrief -> structured facts (LLM, with a deterministic rule-based fallback)
+ingest/transcribe_audio.py        Spoken debrief -> transcript -> the SAME text extractor (audio converges into the text path)
+ingest/extract_image.py           Photographed form -> layout-aware OCR -> structured fields
+ingest/run_ingest.py              Runs all three modalities and scores them against held-out ground truth
 app/nl_query.py                   Conversational layer: question -> intent -> SQL -> chart spec + explanation
 app/llm_interpret.py              Real LLM interpretation via OpenRouter; the primary path when configured
 auth/seed_users.py                 Seeds demo user accounts (run once before first use)
@@ -103,6 +122,7 @@ api/deps.py                       JWT-cookie session handling (login/current-use
 api/routers/                      auth, dashboard (Overview/Trends/Map/Drill-down data), ask, governance, audit-log endpoints
 frontend/                         React + TypeScript + Tailwind SPA -- sidebar nav, dashboards (Recharts), map (react-leaflet), conversational query UI
 rmf/                               RMF documentation package (categorization, SSP, SAP, SAR, POA&M)
+docs/build_feasibility_docx.js    Generates the SBIR Phase I feasibility .docx from live repository artifacts
 tests/test_api.py                 API tests: auth, role-based access control, response contracts
 tests/test_static_serving.py      Production-mode tests: SPA serving and client-side route fallback
 tests/test_questions.py           Curated realistic-question test harness (see QUESTION_TEST_LOG.md)

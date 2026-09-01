@@ -185,6 +185,61 @@ INTENTS = [
         "entity_to_dimension": {"equipment_type": "downtime", "unit_name": "resolution"},
         "valid_entity_columns": {"equipment_type", "unit_name"},
     },
+    {
+        "id": "debrief_reports",
+        "llm_description": (
+            "What aircrew actually SAID in post-mission debriefs -- problems described "
+            "in narrative debrief reports, spoken debrief recordings, or crew comments, "
+            "as opposed to what the maintenance system formally recorded. Use for "
+            "questions about what crews are reporting, complaining about, or mentioning "
+            "in their debriefs."
+        ),
+        "keywords": ["debrief", "debriefs", "narrative", "report", "reports", "reporting",
+                     "crew", "crews", "said", "mention", "mentioned", "complain", "complaints"],
+        "dimension_keywords": {
+            "equipment": ["equipment", "system", "which equipment", "what equipment"],
+            "unit": ["unit", "squadron", "by unit", "which unit"],
+        },
+        "default_dimension": "equipment",
+        "views": {
+            "equipment": "v_debrief_mentions_by_equipment",
+            "unit": "v_debrief_discrepancy_rate_by_unit",
+        },
+        "chart": {
+            "x": {"equipment": "equipment_type", "unit": "unit_name"},
+            "y": {"equipment": "mention_count", "unit": "discrepancy_rate_pct"},
+            "kind": "bar",
+        },
+        "entity_to_dimension": {"equipment_type": "equipment", "unit_name": "unit"},
+        "valid_entity_columns": {"equipment_type", "unit_name"},
+    },
+    {
+        "id": "corroboration",
+        # Placed last so its narrower vocabulary can't shadow the broader
+        # debrief_reports intent above -- a plain "what are crews reporting"
+        # question should land on the mention counts, not on the comparison.
+        "llm_description": (
+            "Cross-checking or comparing what crews described in debrief narratives "
+            "against what the maintenance system of record actually logged -- whether "
+            "the two sources agree, corroborate, or diverge. Use for questions about "
+            "matching, cross-referencing, corroborating, or reconciling narrative "
+            "reports with maintenance records, or about underreporting."
+        ),
+        "keywords": ["corroborate", "corroboration", "cross-check", "cross check",
+                     "match up", "line up", "agree", "consistent", "discrepancy between",
+                     "underreport", "underreported", "underreporting", "reconcile",
+                     "compared to records", "versus records"],
+        "dimension_keywords": {"equipment": ["equipment", "system"]},
+        "default_dimension": "equipment",
+        "views": {"equipment": "v_narrative_vs_maintenance_corroboration"},
+        "chart": {
+            "x": {"equipment": "equipment_type"},
+            "y": {"equipment": "narrative_to_record_ratio"},
+            "kind": "bar",
+        },
+        "entity_to_dimension": {"equipment_type": "equipment"},
+        "valid_entity_columns": {"equipment_type"},
+    },
 ]
 
 # "training" and "qualification" are real signals for the training_currency

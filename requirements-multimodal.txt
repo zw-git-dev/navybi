@@ -1,0 +1,22 @@
+# Optional dependencies for the multimodal ingestion layer (ingest/):
+# free-text debrief extraction, spoken-debrief transcription, and OCR of
+# photographed maintenance forms.
+#
+# Kept separate from requirements.txt on purpose. faster-whisper pulls in a
+# substantial native inference runtime (ctranslate2, onnxruntime, av) that
+# the core BI application has no use for, and carrying it in the base
+# install would inflate the container image and CI time for every deployment
+# that only needs the structured-data path. The application degrades
+# gracefully without these: ingest/ reports the modality as unavailable and
+# the warehouse simply builds without the multimodal views, rather than
+# failing.
+#
+#   pip install -r requirements-multimodal.txt
+#
+# OCR additionally needs the tesseract binary, which is not a Python package:
+#   macOS:         brew install tesseract
+#   Debian/Ubuntu: apt-get install tesseract-ocr
+
+faster-whisper==1.2.1
+pillow==11.3.0
+pytesseract==0.3.13
